@@ -7,8 +7,13 @@ let Vue // bind on install
 
 export class Store {
   constructor (options = {}) {
+    // 第1步 环境判断
+    // vuex 的工作的必要条件:
+    // 1、已经执行安装函数进行装载
+    // 2、支持 Promise 语法（后面解释为什么）
     assert(Vue, `must call Vue.use(Vuex) before creating a store instance.`)
     assert(typeof Promise !== 'undefined', `vuex requires a Promise polyfill in this browser.`)
+    // tip: 查看一下 vuex 的 assert 断言函数
 
     const {
       plugins = [],
@@ -22,6 +27,15 @@ export class Store {
       state = state()
     }
 
+    // 第2步 数据初始化、module 树的构造
+    // 这里面可以分个组：
+    // _committing
+    // _subscribers
+    // _actions\_mutations\wrappedGetters
+    // _modules\_modulesNamespaceMap moduls就是 store 分模块的集合、namespagemap 是模块命名空间 map
+    // _watcherVM 这里实例化了一个 Vue 组件
+
+
     // store internal state
     this._committing = false
     this._actions = Object.create(null)
@@ -32,9 +46,9 @@ export class Store {
     this._subscribers = []
     this._watcherVM = new Vue()
 
-    // bind commit and dispatch to self
     const store = this
     const { dispatch, commit } = this
+    // 第3步 设置 dispatch、commit
     this.dispatch = function boundDispatch (type, payload) {
       return dispatch.call(store, type, payload)
     }
@@ -45,15 +59,18 @@ export class Store {
     // strict mode
     this.strict = strict
 
+    // 第4步 安装 module 初始化rootState
     // init root module.
     // this also recursively registers all sub-modules
     // and collects all module getters inside this._wrappedGetters
     installModule(this, state, [], this._modules.root)
 
+    // 第5步 store_.vm组件设置
     // initialize the store vm, which is responsible for the reactivity
     // (also registers _wrappedGetters as computed properties)
     resetStoreVM(this, state)
 
+    // 第6步 plugin注入
     // apply plugins
     plugins.concat(devtoolPlugin).forEach(plugin => plugin(this))
   }
@@ -66,6 +83,7 @@ export class Store {
     assert(false, `Use store.replaceState() to explicit replace store state.`)
   }
 
+  // 3.1 了解 commit
   commit (_type, _payload, _options) {
     // check object-style commit
     const {
@@ -95,6 +113,7 @@ export class Store {
     }
   }
 
+  // 3.2了解dispatch
   dispatch (_type, _payload) {
     // check object-style dispatch
     const {
