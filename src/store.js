@@ -156,21 +156,25 @@ export class Store {
     return this._watcherVM.$watch(() => getter(this.state, this.getters), cb, options)
   }
 
+  // 这是一个黑魔法的触发点
   replaceState (state) {
     this._withCommit(() => {
       this._vm._data.$$state = state
     })
   }
 
+  // 动态模块注册，流程几乎和初始化一样
   registerModule (path, rawModule) {
     if (typeof path === 'string') path = [path]
     assert(Array.isArray(path), `module path must be a string or an Array.`)
+  // 需要注意的是，这个时候因为没有设置runtime，所以动态注册的模块的 runtime 是 true
     this._modules.register(path, rawModule)
     installModule(this, this.state, path, this._modules.get(path))
     // reset store to update getters...
     resetStoreVM(this, this.state)
   }
 
+  // !!!
   unregisterModule (path) {
     if (typeof path === 'string') path = [path]
     assert(Array.isArray(path), `module path must be a string or an Array.`)
@@ -207,6 +211,7 @@ function resetStore (store, hot) {
   resetStoreVM(store, state, hot)
 }
 
+// 重置一个私有的 _vm 对象，它是一个 Vue 的实例。这个 _vm 对象会保留我们的 state 树，以及用计算属性的方式存储了 store 的 getters
 function resetStoreVM (store, state, hot) {
   const oldVm = store._vm
 
@@ -214,6 +219,8 @@ function resetStoreVM (store, state, hot) {
   store.getters = {}
   const wrappedGetters = store._wrappedGetters
   const computed = {}
+  // 遍历过程中，依次拿到每个 getter 的包装函数，并把这个包装函数执行的结果用 computed 临时变量保存。
+  // 接着用 es5 的 Object.defineProperty 方法为 store.getters 定义了 get 方法，也就是当我们在组件中调用this.$store.getters.xxxgetters 这个方法的时候，会访问 store._vm[xxxgetters]
   forEachValue(wrappedGetters, (fn, key) => {
     // use computed to leverage its lazy-caching mechanism
     computed[key] = () => fn(store)
@@ -226,6 +233,7 @@ function resetStoreVM (store, state, hot) {
   // use a Vue instance to store the state tree
   // suppress warnings just in case the user has added
   // some funky global mixins
+  // 设置 silent 为 true 的目的是为了取消这个 _vm 的所有日志和警告
   const silent = Vue.config.silent
   Vue.config.silent = true
   store._vm = new Vue({
@@ -241,6 +249,7 @@ function resetStoreVM (store, state, hot) {
     enableStrictMode(store)
   }
 
+  // 这个函数每次都会创建新的 Vue 实例并赋值到 store._vm 上，那么旧的 _vm 对象的状态设置为 null，并调用 $destroy 方法销毁这个旧的 _vm 对象
   if (oldVm) {
     if (hot) {
       // dispatch changes in all subscribed watchers
@@ -253,16 +262,23 @@ function resetStoreVM (store, state, hot) {
   }
 }
 
+// 这里是初始化的第4步，其他阶段也会调用
+// 初始化的时候调用是这样的
+// installModule(this, state, [], this._modules.root)
+// 最后一个参数 hot 为true，表示它是一次热更新
+//
 function installModule (store, rootState, path, module, hot) {
-  const isRoot = !path.length
+  const isRoot = !path.length   // []的时候是根 module
   const namespace = store._modules.getNamespace(path)
 
   // register in namespace map
+  // !!! namespaced似乎没有地方会使用,api文档也没有涉及
   if (module.namespaced) {
     store._modulesNamespaceMap[namespace] = module
   }
 
-  // set state
+  // 不为根且非热更新的情况，设置级联状态,先看后面的部分
+  // 形成了 modules 外的 state 树
   if (!isRoot && !hot) {
     const parentState = getNestedState(rootState, path.slice(0, -1))
     const moduleName = path[path.length - 1]
@@ -271,8 +287,11 @@ function installModule (store, rootState, path, module, hot) {
     })
   }
 
+  // 定义local变量和module.context的值
+  // 执行makeLocalContext方法，为该module设置局部的 dispatch、commit方法以及getters和state
   const local = module.context = makeLocalContext(store, namespace, path)
 
+  // 请注意这里没有forEachState
   module.forEachMutation((mutation, key) => {
     const namespacedType = namespace + key
     registerMutation(store, namespacedType, mutation, local)
@@ -288,6 +307,7 @@ function installModule (store, rootState, path, module, hot) {
     registerGetter(store, namespacedType, getter, local)
   })
 
+  // 递归去注册每一层的module
   module.forEachChild((child, key) => {
     installModule(store, rootState, path.concat(key), child, hot)
   })
@@ -300,6 +320,7 @@ function installModule (store, rootState, path, module, hot) {
 function makeLocalContext (store, namespace, path) {
   const noNamespace = namespace === ''
 
+  // 这些局部方法本质是调用的外部store方法，但是在有namespace的情况下略作区分
   const local = {
     dispatch: noNamespace ? store.dispatch : (_type, _payload, _options) => {
       const args = unifyObjectStyle(_type, _payload, _options)
@@ -340,6 +361,7 @@ function makeLocalContext (store, namespace, path) {
     getters: {
       get: noNamespace
         ? () => store.getters
+      // !!!
         : () => makeLocalGetters(store, namespace)
     },
     state: {
@@ -347,6 +369,7 @@ function makeLocalContext (store, namespace, path) {
     }
   })
 
+  // 每个 module 有了自己的commit\dispatch\getters\state方法
   return local
 }
 
@@ -373,6 +396,7 @@ function makeLocalGetters (store, namespace) {
   return gettersProxy
 }
 
+// mutations 的每一项是一个数组里面是一个 handler 函数，函数的第一个变量会传递这个 module 的 state，这个 state 是 module 初始化的时候生成的，但是之后要注意修改的时间
 function registerMutation (store, type, handler, local) {
   const entry = store._mutations[type] || (store._mutations[type] = [])
   entry.push(function wrappedMutationHandler (payload) {
@@ -380,9 +404,11 @@ function registerMutation (store, type, handler, local) {
   })
 }
 
+// !!!
 function registerAction (store, type, handler, local) {
   const entry = store._actions[type] || (store._actions[type] = [])
   entry.push(function wrappedActionHandler (payload, cb) {
+    // 请注意 handler 的第一个参数
     let res = handler({
       dispatch: local.dispatch,
       commit: local.commit,
@@ -405,6 +431,7 @@ function registerAction (store, type, handler, local) {
   })
 }
 
+// 这个返回比较简单,记住参数是一个函数，返回函数的参数辨别是local和 store 的state和getters
 function registerGetter (store, type, rawGetter, local) {
   if (store._wrappedGetters[type]) {
     console.error(`[vuex] duplicate getter key: ${type}`)
@@ -420,12 +447,14 @@ function registerGetter (store, type, rawGetter, local) {
   }
 }
 
+// 严格模式监测 store._vm.state 的变化，看看 state 的变化是否通过执行 mutation 的回调函数改变，如果是外部直接修改 state，那么 store._committing 的值为 false，这样就抛出一条错误。
 function enableStrictMode (store) {
   store._vm.$watch(function () { return this._data.$$state }, () => {
     assert(store._committing, `Do not mutate vuex store state outside mutation handlers.`)
   }, { deep: true, sync: true })
 }
 
+// 根据 path 查找 state 上的嵌套 state
 function getNestedState (state, path) {
   return path.length
     ? path.reduce((state, key) => state[key], state)

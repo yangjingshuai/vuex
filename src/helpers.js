@@ -4,6 +4,8 @@ export const mapState = normalizeNamespace((namespace, states) => {
     res[key] = function mappedState () {
       let state = this.$store.state
       let getters = this.$store.getters
+      // 需要注意的是只要存在 module，就不会使用根节点而使用每个 module 的私有的属性
+      // !!! 为什么这种时候不用查询？是太麻烦了，所以利用那个 modulesNamespaceMap?
       if (namespace) {
         const module = getModuleByNamespace(this.$store, 'mapState', namespace)
         if (!module) {
@@ -70,12 +72,15 @@ export const mapActions = normalizeNamespace((namespace, actions) => {
   return res
 })
 
+// 规范化数组和对象
 function normalizeMap (map) {
   return Array.isArray(map)
     ? map.map(key => ({ key, val: key }))
     : Object.keys(map).map(key => ({ key, val: map[key] }))
 }
 
+// 这个函数是一个坑爹的理解
+// 请注意这里的 namespace 是一个什么概念，可以理解为所有的父节点(命名空间)
 function normalizeNamespace (fn) {
   return (namespace, map) => {
     if (typeof namespace !== 'string') {
@@ -88,6 +93,7 @@ function normalizeNamespace (fn) {
   }
 }
 
+// 
 function getModuleByNamespace (store, helper, namespace) {
   const module = store._modulesNamespaceMap[namespace]
   if (!module) {

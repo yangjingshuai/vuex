@@ -15,12 +15,14 @@ export default class ModuleCollection {
     }
   }
 
+  // 根据路径从根部寻找一个子 module，从这个方法开始莫名其妙地开始绕了
   get (path) {
     return path.reduce((module, key) => {
       return module.getChild(key)
     }, this.root)
   }
 
+  // 获取命名空间的方法，如果设置namespaced为 true，返回的是类似这样的结构XX/YY/ZZ，如果是 false，返回的是'';这个方法之后在外部 installModule 的时候会调用
   getNamespace (path) {
     let module = this.root
     return path.reduce((namespace, key) => {
@@ -55,6 +57,7 @@ export default class ModuleCollection {
     // 请注意 parent 是怎么找到的
     const key = path[path.length - 1]
     // 这个基本上是唯一提到 runtime 用处的地方，但是又需要注意runtime 为 false 的时候才会顺利删除掉一个 children，一般情况下都删除不了
+    // 什么是一般情况？后面会讲到，创建 store 的时候声明的模块是没办法删除的，而动态注册的那些是可以的
     if (!parent.getChild(key).runtime) return
 
     parent.removeChild(key)

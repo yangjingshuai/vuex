@@ -2,9 +2,9 @@ import { forEachValue } from '../util'
 
 export default class Module {
   constructor (rawModule, runtime) {
-    // !!! 这个 runtime 存疑
     // 初始化this.runtime\this._children\this._rawModule\this.state
     // 需要注意的是这几个属性的作用、可能发生更改的时机
+    // !!!module的 state 作用
     this.runtime = runtime
     this._children = Object.create(null)
     this._rawModule = rawModule
@@ -12,6 +12,7 @@ export default class Module {
     this.state = (typeof rawState === 'function' ? rawState() : rawState) || {}
   }
 
+  // 请注意，这个namespaced是在你new Store({})的时候传进来的
   get namespaced () {
     return !!this._rawModule.namespaced
   }
