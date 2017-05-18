@@ -35,12 +35,11 @@ export class Store {
     // _modules\_modulesNamespaceMap moduls就是 store 分模块的集合、namespagemap 是模块命名空间 map
     // _watcherVM 这里实例化了一个 Vue 组件
 
-
-    // store internal state
     this._committing = false
     this._actions = Object.create(null)
     this._mutations = Object.create(null)
     this._wrappedGetters = Object.create(null)
+    // 2.1 介绍下 ModuleCollection 结构
     this._modules = new ModuleCollection(options)
     this._modulesNamespaceMap = Object.create(null)
     this._subscribers = []
@@ -84,6 +83,7 @@ export class Store {
   }
 
   // 3.1 了解 commit
+  // type 表示 mutation 的类型，payload 表示额外的参数，options 表示一些配置
   commit (_type, _payload, _options) {
     // check object-style commit
     const {
@@ -93,16 +93,20 @@ export class Store {
     } = unifyObjectStyle(_type, _payload, _options)
 
     const mutation = { type, payload }
+    // 3.1.1 这里可以关注一下_mutations的结构、怎样回调
     const entry = this._mutations[type]
     if (!entry) {
       console.error(`[vuex] unknown mutation type: ${type}`)
       return
     }
+    // 3.1.2 这里可以关注一下_withCommit
     this._withCommit(() => {
       entry.forEach(function commitIterator (handler) {
         handler(payload)
+        // 这个方法就是之前定义的 wrappedMutationHandler(handler)，执行它就相当于执行了 registerMutation 注册的回调函数
       })
     })
+    // 3.1.3 给插件传入回掉
     this._subscribers.forEach(sub => sub(mutation, this.state))
 
     if (options && options.silent) {
@@ -113,7 +117,8 @@ export class Store {
     }
   }
 
-  // 3.2了解dispatch
+  // 3.2 了解dispatch
+  // type 表示 action 的类型，payload 表示额外的参数
   dispatch (_type, _payload) {
     // check object-style dispatch
     const {
@@ -121,11 +126,13 @@ export class Store {
       payload
     } = unifyObjectStyle(_type, _payload)
 
+    // 3.2.1 这里可以关注一下_actions
     const entry = this._actions[type]
     if (!entry) {
       console.error(`[vuex] unknown action type: ${type}`)
       return
     }
+    // 它对 action 的对象数组长度做判断，如果长度为 1 则直接调用 entry[0](payload)， 这个方法就是之前定义的 wrappedActionHandler(payload, cb)，执行它就相当于执行了 registerAction 注册的回调函数，并把当前模块的 context 和 额外参数 payload 作为参数传入。所以我们在 action 的回调函数里，可以拿到当前模块的上下文包括 store 的 commit 和 dispatch 方法、getter、当前模块的 state 和 rootState。
     return entry.length > 1
       ? Promise.all(entry.map(handler => handler(payload)))
       : entry[0](payload)

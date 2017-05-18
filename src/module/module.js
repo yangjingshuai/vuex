@@ -2,6 +2,9 @@ import { forEachValue } from '../util'
 
 export default class Module {
   constructor (rawModule, runtime) {
+    // !!! 这个 runtime 存疑
+    // 初始化this.runtime\this._children\this._rawModule\this.state
+    // 需要注意的是这几个属性的作用、可能发生更改的时机
     this.runtime = runtime
     this._children = Object.create(null)
     this._rawModule = rawModule
@@ -24,6 +27,10 @@ export default class Module {
   getChild (key) {
     return this._children[key]
   }
+
+  // 可以关注一下 update 更新了哪些属性，请注意这个 update 是 module 的 update
+  // namespaced\actions\mudations\getters
+  // _children不会在这个过程中更新
 
   update (rawModule) {
     this._rawModule.namespaced = rawModule.namespaced
