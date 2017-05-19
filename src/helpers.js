@@ -1,3 +1,4 @@
+// 你写的mapState里面的方法的参数是state\getters，会根据namespace自动进行映射，到对应的 module 当中
 export const mapState = normalizeNamespace((namespace, states) => {
   const res = {}
   normalizeMap(states).forEach(({ key, val }) => {
@@ -5,7 +6,6 @@ export const mapState = normalizeNamespace((namespace, states) => {
       let state = this.$store.state
       let getters = this.$store.getters
       // 需要注意的是只要存在 module，就不会使用根节点而使用每个 module 的私有的属性
-      // !!! 为什么这种时候不用查询？是太麻烦了，所以利用那个 modulesNamespaceMap?
       if (namespace) {
         const module = getModuleByNamespace(this.$store, 'mapState', namespace)
         if (!module) {
@@ -93,7 +93,7 @@ function normalizeNamespace (fn) {
   }
 }
 
-// 
+// 每一个 map 都会检验他所附属的对象module是否存在，检验方法是利用namespace
 function getModuleByNamespace (store, helper, namespace) {
   const module = store._modulesNamespaceMap[namespace]
   if (!module) {

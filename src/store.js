@@ -417,7 +417,7 @@ function makeLocalContext (store, namespace, path) {
   const local = {
 
     // 我们使用的时候对于根节点，会直接调用store.dispatch
-    // 对于子节点，其实也是一样的，只不过命名空间的处理有点绕。其实也很简单，结果就是，大家（每个 module.context对象）都会有自己的局部dispatch\commit\getters\state why
+    // 对于子节点，其实也是一样的，只不过命名空间的处理有点绕。其实也很简单，结果就是，大家（每个 module.context对象）都会有自己的局部dispatch\commit\getters\state why???
     // 下面之所有用一个三目，主要还是为了验证是不是存在这个action/mutation
     dispatch: noNamespace ? store.dispatch : (_type, _payload, _options) => {
       const args = unifyObjectStyle(_type, _payload, _options)
@@ -544,6 +544,7 @@ function registerGetter (store, type, rawGetter, local) {
     return
   }
   store._wrappedGetters[type] = function wrappedGetter (store) {
+    // 注意顺序
     return rawGetter(
       local.state, // local state
       local.getters, // local getters
