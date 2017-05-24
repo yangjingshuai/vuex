@@ -1,5 +1,5 @@
 import Module from './module'
-import { forEachValue } from '../util'
+import { assert, forEachValue } from '../util'
 
 // Module 是一个独立的 Module，而 ModuleColection 是一个集合，下面从集合开始说
 // 这部分的看代码顺序：
@@ -12,14 +12,9 @@ import { forEachValue } from '../util'
 export default class ModuleCollection {
   constructor (rawRootModule) {
     // register root module (Vuex.Store options)
-    this.root = new Module(rawRootModule, false)
-
     // 注册所有内嵌 modules
-    if (rawRootModule.modules) {
-      forEachValue(rawRootModule.modules, (rawModule, key) => {
-        this.register([key], rawModule, false)
-      })
-    }
+    // 这段代码精简了不少，原来生硬地在外部造了一个root对象
+    this.register([], rawRootModule, false)
   }
 
   // 根据路径从根部寻找一个子 module，从这个方法开始莫名其妙地开始绕了
@@ -40,16 +35,24 @@ export default class ModuleCollection {
 
   // ModuleCollection的 update，注意区分
   update (rawRootModule) {
-    update(this.root, rawRootModule)
+    update([], this.root, rawRootModule)
   }
 
   register (path, rawModule, runtime = true) {
-    const parent = this.get(path.slice(0, -1))
-    // 注册一个新 module，添加到父module 上，请注意这里一系列对 path 的处理；runtime 继承父元素的
-    // 注意一下子 module 将来的rawModule是来自于父元素的modules的子元素，所以 actions 和父元素没有关系
+    if (process.env.NODE_ENV !== 'production') {
+      assertRawModule(path, rawModule)
+    }
+
     const newModule = new Module(rawModule, runtime)
+    // 注册一个新 module，添加到父module 上，请注意这里一系列对 path 的处理；runtime 继承父元素的
+    // 注意一下 module 将来的rawModule是来自于父元素的modules的子元素，所以 actions 和父元素没有关系
     // 这是唯一调用 addChild 的地方，也就是一个_module的 _children 在初始化的时候就固定了，之后不会更改
-    parent.addChild(path[path.length - 1], newModule)
+    if (path.length === 0) {
+      this.root = newModule
+    } else {
+      const parent = this.get(path.slice(0, -1))
+      parent.addChild(path[path.length - 1], newModule)
+    }
 
     // register nested modules
     if (rawModule.modules) {
@@ -73,7 +76,11 @@ export default class ModuleCollection {
   }
 }
 
-function update (targetModule, newModule) {
+function update (path, targetModule, newModule) {
+  if (process.env.NODE_ENV !== 'production') {
+    assertRawModule(path, newModule)
+  }
+
   // update target module
   // 注意更新了哪些属性
   targetModule.update(newModule)
@@ -83,14 +90,43 @@ function update (targetModule, newModule) {
     for (const key in newModule.modules) {
       // 新的 Module 的数据结构需要是原来的子集
       if (!targetModule.getChild(key)) {
-        console.warn(
-          `[vuex] trying to add a new module '${key}' on hot reloading, ` +
-          'manual reload is needed'
-        )
+        if (process.env.NODE_ENV !== 'production') {
+          console.warn(
+            `[vuex] trying to add a new module '${key}' on hot reloading, ` +
+            'manual reload is needed'
+          )
+        }
         return
       }
       // 递归嵌套
-      update(targetModule.getChild(key), newModule.modules[key])
+      update(
+        path.concat(key),
+        targetModule.getChild(key),
+        newModule.modules[key]
+      )
     }
   }
+}
+
+function assertRawModule (path, rawModule) {
+  ['getters', 'actions', 'mutations'].forEach(key => {
+    if (!rawModule[key]) return
+
+    forEachValue(rawModule[key], (value, type) => {
+      assert(
+        typeof value === 'function',
+        makeAssertionMessage(path, key, type, value)
+      )
+    })
+  })
+}
+
+function makeAssertionMessage (path, key, type, value) {
+  let buf = `${key} should be function but "${key}.${type}"`
+  if (path.length > 0) {
+    buf += ` in module "${path.join('.')}"`
+  }
+  buf += ` is ${JSON.stringify(value)}.`
+
+  return buf
 }

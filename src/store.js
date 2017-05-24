@@ -7,15 +7,17 @@ let Vue // bind on install
 
 export class Store {
   constructor (options = {}) {
-    /*
-     * 第1步 环境判断
-     */
+
+    // 第1步 环境判断
     // vuex 的工作的必要条件:
     // 1、已经执行安装函数进行装载
     // 2、支持 Promise 语法（后面解释为什么）
-    assert(Vue, `must call Vue.use(Vuex) before creating a store instance.`)
-    assert(typeof Promise !== 'undefined', `vuex requires a Promise polyfill in this browser.`)
-    // tip: 查看一下 vuex 的 assert 断言函数
+    // 3、最新添加的，Store 必须通过 new 来实例化
+    if (process.env.NODE_ENV !== 'production') {
+      assert(Vue, `must call Vue.use(Vuex) before creating a store instance.`)
+      assert(typeof Promise !== 'undefined', `vuex requires a Promise polyfill in this browser.`)
+      assert(this instanceof Store, `Store must be called with the new operator.`)
+    }
 
     /* 
      * 第2步 数据初始化、module 树的构造
@@ -34,6 +36,7 @@ export class Store {
       state = state()
     }
 
+    // 第2步 数据初始化、module 树的构造
     // 这里面可以分个组：
     // _committing  是否在进行提交状态标识（这个值其实是和 strict 设置紧密相关的）
     // _subscribers   插件（订阅函数）合集
@@ -103,7 +106,9 @@ export class Store {
   }
 
   set state (v) {
-    assert(false, `Use store.replaceState() to explicit replace store state.`)
+    if (process.env.NODE_ENV !== 'production') {
+      assert(false, `Use store.replaceState() to explicit replace store state.`)
+    }
   }
 
   // 3.1 了解 commit
@@ -133,7 +138,9 @@ export class Store {
     // 3.1.1 这里可以关注一下_mutations的结构、怎样回调，同样的道理，所有的 mutations 已经都做了 key-value 对应
     const entry = this._mutations[type]
     if (!entry) {
-      console.error(`[vuex] unknown mutation type: ${type}`)
+      if (process.env.NODE_ENV !== 'production') {
+        console.error(`[vuex] unknown mutation type: ${type}`)
+      }
       return
     }
     // 3.1.2 这里可以关注一下_withCommit
@@ -158,7 +165,10 @@ export class Store {
     this._subscribers.forEach(sub => sub(mutation, this.state))
 
     // !!! 这个配置我还没跟踪
-    if (options && options.silent) {
+    if (
+      process.env.NODE_ENV !== 'production' &&
+      options && options.silent
+    ) {
       console.warn(
         `[vuex] mutation type: ${type}. Silent option has been removed. ` +
         'Use the filter functionality in the vue-devtools'
@@ -192,7 +202,9 @@ export class Store {
     // 同时你也可以想象一下，外部调用 dispatch 的时候传入一个 type 作为 key，而this._actions里面保存了所有注册的__actions，那是否保存了嵌套的actions呢？ !!!
     const entry = this._actions[type]
     if (!entry) {
-      console.error(`[vuex] unknown action type: ${type}`)
+      if (process.env.NODE_ENV !== 'production') {
+        console.error(`[vuex] unknown action type: ${type}`)
+      }
       return
     }
     // 它对 action 的对象数组长度做判断，如果长度为 1 则直接调用 entry[0](payload)
@@ -217,7 +229,9 @@ export class Store {
   }
 
   watch (getter, cb, options) {
-    assert(typeof getter === 'function', `store.watch only accepts a function.`)
+    if (process.env.NODE_ENV !== 'production') {
+      assert(typeof getter === 'function', `store.watch only accepts a function.`)
+    }
     return this._watcherVM.$watch(() => getter(this.state, this.getters), cb, options)
   }
 
@@ -231,8 +245,13 @@ export class Store {
   // 动态模块注册，流程几乎和初始化一样
   registerModule (path, rawModule) {
     if (typeof path === 'string') path = [path]
-    assert(Array.isArray(path), `module path must be a string or an Array.`)
-  // 需要注意的是，这个时候因为没有设置runtime，所以动态注册的模块的 runtime 是 true
+    // 需要注意的是，这个时候因为没有设置runtime，所以动态注册的模块的 runtime 是 true
+
+    if (process.env.NODE_ENV !== 'production') {
+      assert(Array.isArray(path), `module path must be a string or an Array.`)
+      assert(path.length > 0, 'cannot register the root module by using registerModule.')
+    }
+
     this._modules.register(path, rawModule)
     installModule(this, this.state, path, this._modules.get(path))
     // reset store to update getters...
@@ -242,7 +261,11 @@ export class Store {
   // !!!
   unregisterModule (path) {
     if (typeof path === 'string') path = [path]
-    assert(Array.isArray(path), `module path must be a string or an Array.`)
+
+    if (process.env.NODE_ENV !== 'production') {
+      assert(Array.isArray(path), `module path must be a string or an Array.`)
+    }
+
     this._modules.unregister(path)
     this._withCommit(() => {
       const parentState = getNestedState(this.state, path.slice(0, -1))
@@ -426,7 +449,7 @@ function makeLocalContext (store, namespace, path) {
 
       if (!options || !options.root) {
         type = namespace + type
-        if (!store._actions[type]) {
+        if (process.env.NODE_ENV !== 'production' && !store._actions[type]) {
           console.error(`[vuex] unknown local action type: ${args.type}, global type: ${type}`)
           return
         }
@@ -442,7 +465,7 @@ function makeLocalContext (store, namespace, path) {
 
       if (!options || !options.root) {
         type = namespace + type
-        if (!store._mutations[type]) {
+        if (process.env.NODE_ENV !== 'production' && !store._mutations[type]) {
           console.error(`[vuex] unknown local mutation type: ${args.type}, global type: ${type}`)
           return
         }
@@ -540,7 +563,9 @@ function registerAction (store, type, handler, local) {
 // 这里有个比较蛋疼的事情，为什么别人都用_actions，而 getters 用的是_wrappedGetters这个属性名呢？思考下，废话，getters 被占用了，那怎么就被占用了呢？？？
 function registerGetter (store, type, rawGetter, local) {
   if (store._wrappedGetters[type]) {
-    console.error(`[vuex] duplicate getter key: ${type}`)
+    if (process.env.NODE_ENV !== 'production') {
+      console.error(`[vuex] duplicate getter key: ${type}`)
+    }
     return
   }
   store._wrappedGetters[type] = function wrappedGetter (store) {
@@ -560,7 +585,9 @@ function registerGetter (store, type, rawGetter, local) {
 // 请注意这里用到了$watch，监听的是this._data.$$state。这些是什么呢？!!!
 function enableStrictMode (store) {
   store._vm.$watch(function () { return this._data.$$state }, () => {
-    assert(store._committing, `Do not mutate vuex store state outside mutation handlers.`)
+    if (process.env.NODE_ENV !== 'production') {
+      assert(store._committing, `Do not mutate vuex store state outside mutation handlers.`)
+    }
   }, { deep: true, sync: true })
 }
 
@@ -578,16 +605,20 @@ function unifyObjectStyle (type, payload, options) {
     type = type.type
   }
 
-  assert(typeof type === 'string', `Expects string as the type, but found ${typeof type}.`)
+  if (process.env.NODE_ENV !== 'production') {
+    assert(typeof type === 'string', `Expects string as the type, but found ${typeof type}.`)
+  }
 
   return { type, payload, options }
 }
 
 export function install (_Vue) {
   if (Vue) {
-    console.error(
-      '[vuex] already installed. Vue.use(Vuex) should be called only once.'
-    )
+    if (process.env.NODE_ENV !== 'production') {
+      console.error(
+        '[vuex] already installed. Vue.use(Vuex) should be called only once.'
+      )
+    }
     return
   }
   Vue = _Vue
